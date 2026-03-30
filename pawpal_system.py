@@ -3,74 +3,90 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 
+# TASK: Represents one activity with schedule metadata.
 @dataclass
-class PetProfile:
+class Task:
+    """A single scheduled activity for a pet."""
+    task_id: int
+    description: str
+    pet_id: int
+    scheduled_time: Optional[datetime] = None
+    duration_minutes: int = 30
+    frequency: Optional[str] = None  # e.g., 'daily', 'weekly'
+    status: str = "pending"  # 'pending', 'scheduled', 'completed'
+
+    def mark_scheduled(self, scheduled_time: datetime) -> None:
+        """Mark the task as scheduled at a specific time."""
+        self.scheduled_time = scheduled_time
+        self.status = "scheduled"
+
+    def mark_completed(self) -> None:
+        """Mark the task status as completed."""
+        self.status = "completed"
+
+    def is_overdue(self, now: Optional[datetime] = None) -> bool:
+        """Check if the task is overdue relative to current time."""
+        now = now or datetime.now()
+        return self.scheduled_time is not None and self.scheduled_time < now and self.status != "completed"
+
+
+@dataclass
+class Pet:
+    """A pet profile that contains task assignments."""
     pet_id: int
     name: str
     species: str
     age: Optional[int] = None
     weight: Optional[float] = None
-    preferences: Dict[str, str] = field(default_factory=dict)
-    health_notes: List[str] = field(default_factory=list)
+    tasks: List[Task] = field(default_factory=list)
 
-    def update_preferences(self, prefs: Dict[str, str]) -> None:
-        self.preferences.update(prefs)
+    def add_task(self, task: Task) -> None:
+        """Add a task to this pet's task list."""
+        if task.pet_id != self.pet_id:
+            raise ValueError("Task pet_id does not match")
+        self.tasks.append(task)
 
-    def add_health_note(self, note: str) -> None:
-        self.health_notes.append(f"{datetime.now().isoformat()}: {note}")
-
-    def needs_medication(self, now: Optional[datetime] = None) -> bool:
-        return False
+    def get_open_tasks(self) -> List[Task]:
+        """Return tasks that are not completed."""
+        return [t for t in self.tasks if t.status != "completed"]
 
     def summary(self) -> Dict:
+        """Return a simple summary of pet info and task count."""
         return {
             "pet_id": self.pet_id,
             "name": self.name,
             "species": self.species,
             "age": self.age,
             "weight": self.weight,
-            "preferences": self.preferences,
-            "health_notes": self.health_notes,
+            "task_count": len(self.tasks),
         }
 
 
 @dataclass
-class CareTask:
-    task_id: int
-    pet_id: int
-    task_type: str
-    duration_minutes: int = 30
-    earliest_start: Optional[datetime] = None
-    latest_end: Optional[datetime] = None
-    priority: int = 1
-    status: str = "pending"
+class Owner:
+    """The owner that manages multiple pets."""
+    owner_id: int
+    name: str
+    pets: Dict[int, Pet] = field(default_factory=dict)
 
-    @property
-    def duration(self) -> timedelta:
-        return timedelta(minutes=self.duration_minutes)
+    def add_pet(self, pet: Pet) -> None:
+        """Register a new pet to this owner."""
+        self.pets[pet.pet_id] = pet
 
-    def is_schedulable(self, slot: "ScheduleSlot") -> bool:
-        if not slot.is_free():
-            return False
-        slot_length = slot.end_time - slot.start_time
-        return slot_length >= self.duration
+    def remove_pet(self, pet_id: int) -> None:
+        """Remove a pet from owner by ID."""
+        self.pets.pop(pet_id, None)
 
-    def mark_done(self) -> None:
-        self.status = "done"
+    def get_pet(self, pet_id: int) -> Optional[Pet]:
+        """Retrieve a single pet by ID."""
+        return self.pets.get(pet_id)
 
-    def reschedule(self, earliest_start: datetime, latest_end: datetime) -> None:
-        self.earliest_start = earliest_start
-        self.latest_end = latest_end
-
-    def describe(self) -> Dict:
-        return {
-            "task_id": self.task_id,
-            "pet_id": self.pet_id,
-            "task_type": self.task_type,
-            "duration_minutes": self.duration_minutes,
-            "priority": self.priority,
-            "status": self.status,
-        }
+    def get_all_tasks(self) -> List[Task]:
+        """Return all tasks for all owned pets."""
+        tasks: List[Task] = []
+        for pet in self.pets.values():
+            tasks.extend(pet.tasks)
+        return tasks
 
 
 @dataclass
@@ -78,79 +94,74 @@ class ScheduleSlot:
     slot_id: int
     start_time: datetime
     end_time: datetime
-    task: Optional[CareTask] = None
-    assigned_to: Optional[int] = None
+    task: Optional[Task] = None
 
     def is_free(self) -> bool:
         return self.task is None
 
-    def assign(self, task: CareTask) -> None:
+    def assign(self, task: Task) -> None:
         if not self.is_free():
             raise ValueError("Slot already occupied")
         self.task = task
-        self.task.status = "scheduled"
+        task.mark_scheduled(self.start_time)
 
     def clear(self) -> None:
         if self.task is not None:
             self.task.status = "pending"
         self.task = None
 
-    def conflicts(self, other_slot: "ScheduleSlot") -> bool:
-        return not (self.end_time <= other_slot.start_time or self.start_time >= other_slot.end_time)
+    def conflicts(self, other: "ScheduleSlot") -> bool:
+        return not (self.end_time <= other.start_time or self.start_time >= other.end_time)
 
 
-class ScheduleManager:
-    def __init__(self):
-        self.pets: Dict[int, PetProfile] = {}
-        self.tasks: Dict[int, CareTask] = {}
+class Scheduler:
+    """The schedule engine that assigns tasks to available timeslots."""
+
+    def __init__(self, owner: Owner):
+        """Initialize scheduler with an owner context."""
+        self.owner = owner
         self.slots: List[ScheduleSlot] = []
-        self.constraints: List = []
-
-    def add_pet(self, pet: PetProfile) -> None:
-        self.pets[pet.pet_id] = pet
-
-    def add_task(self, task: CareTask) -> None:
-        self.tasks[task.task_id] = task
 
     def build_day_slots(self, start: datetime, end: datetime, interval_minutes: int = 30) -> None:
+        """Initialize daily schedule slots for a time range."""
         self.slots = []
         slot_id = 1
         current = start
         while current < end:
             slot_end = current + timedelta(minutes=interval_minutes)
-            self.slots.append(ScheduleSlot(slot_id, current, slot_end))
+            self.slots.append(ScheduleSlot(slot_id=slot_id, start_time=current, end_time=slot_end))
             current = slot_end
             slot_id += 1
 
-    def find_available_slot(self, task: CareTask) -> Optional[ScheduleSlot]:
-        for slot in self.slots:
-            if task.is_schedulable(slot):
-                if task.earliest_start and slot.start_time < task.earliest_start:
-                    continue
-                if task.latest_end and slot.end_time > task.latest_end:
-                    continue
-                return slot
-        return None
+    def get_pending_tasks(self) -> List[Task]:
+        """Retrieve pending tasks across all pets for this owner."""
+        return [t for t in self.owner.get_all_tasks() if t.status == "pending"]
 
-    def assign_task(self, task_id: int, slot_id: int) -> ScheduleSlot:
-        task = self.tasks.get(task_id)
-        slot = next((s for s in self.slots if s.slot_id == slot_id), None)
-        if not task or not slot:
-            raise ValueError("Invalid task or slot")
-        slot.assign(task)
-        return slot
-
-    def generate_schedule(self) -> None:
-        unassigned = [t for t in self.tasks.values() if t.status == "pending"]
-        unassigned.sort(key=lambda t: -t.priority)
-        for task in unassigned:
-            slot = self.find_available_slot(task)
-            if slot:
-                slot.assign(task)
+    def schedule_tasks(self) -> None:
+        """Greedy scheduling of pending tasks into open slots."""
+        tasks = sorted(self.get_pending_tasks(), key=lambda t: t.duration_minutes, reverse=True)
+        for task in tasks:
+            for slot in self.slots:
+                if slot.is_free():
+                    slot.assign(task)
+                    break
 
     def validate(self) -> bool:
-        return all(slot.task is None or slot.task.status == "scheduled" for slot in self.slots)
+        """Validate that there are no conflicting slot assignments."""
+        scheduled_slots = [s for s in self.slots if s.task is not None]
+        for i, a in enumerate(scheduled_slots):
+            for b in scheduled_slots[i + 1:]:
+                if a.conflicts(b):
+                    return False
+        return True
 
-    def adjust_for_priority(self) -> None:
-        pass
+    def get_schedule(self) -> List[ScheduleSlot]:
+        """Return the current schedule data structure."""
+        return self.slots
+
+    def clear_schedule(self) -> None:
+        """Clear all slot assignments and reset task status to pending."""
+        for slot in self.slots:
+            slot.clear()
+
 
