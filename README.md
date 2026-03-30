@@ -42,6 +42,19 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
+## Features
+
+- Sorting by time: `Scheduler.sort_tasks_by_time()` orders tasks by `scheduled_time` (with unscheduled sorted last), then by duration and priority.
+- Conflict warnings: `Scheduler.detect_conflicts()` collects overlap issues and surfaces them as warnings (no crash).
+- Filtering by pet/status: `Scheduler.filter_tasks(status, pet_name)` supports pet-specific and status-based views.
+- Recurring tasks: `Task.frequency` (`daily`, `weekly`) auto-generates the next recurrence when marked complete.
+- Schedule generation: `Scheduler.build_day_slots()`, `Scheduler.schedule_tasks()`, and `Scheduler.validate()` produce a daily schedule with slot checks.
+- Streamlit integration: `app.py` uses `st.session_state` to persist owner/scheduler state, and provides professional UI feedback (`st.success`, `st.warning`, `st.table`).
+
+## 📸 Demo
+
+<a href="/course_images/ai110/pawpal_final_screenshot.png" target="_blank"><img src='/course_images/ai110/pawpal_final_screenshot.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
 ## Smarter Scheduling
 
 PawPal+ now includes additional scheduler features:
