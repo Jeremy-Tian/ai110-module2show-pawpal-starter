@@ -137,6 +137,40 @@ class Scheduler:
         """Retrieve pending tasks across all pets for this owner."""
         return [t for t in self.owner.get_all_tasks() if t.status == "pending"]
 
+    def sort_tasks_by_time(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks by scheduled_time, then by duration (desc), then by priority.
+
+        Tasks with no scheduled_time are pushed to the end to avoid unintentional ordering.
+        """
+        # Tasks can have scheduled_time optionally; None values are pushed to end.
+        return sorted(
+            tasks,
+            key=lambda t: (
+                t.scheduled_time or datetime.max,
+                -t.duration_minutes,
+                t.priority,
+            ),
+        )
+
+    def filter_tasks(self, status: Optional[str] = None, pet_name: Optional[str] = None) -> List[Task]:
+        """Filter tasks by status and/or pet name.
+
+        status: pending/scheduled/completed
+        pet_name: case-insensitive pet name string.
+        """
+        tasks = self.owner.get_all_tasks()
+        if status:
+            tasks = [t for t in tasks if t.status == status]
+
+        if pet_name:
+            pets_by_name = {p.name.lower(): p.pet_id for p in self.owner.pets.values()}
+            target_id = pets_by_name.get(pet_name.lower())
+            if target_id is None:
+                return []
+            tasks = [t for t in tasks if t.pet_id == target_id]
+
+        return tasks
+
     def schedule_tasks(self) -> None:
         """Greedy scheduling of pending tasks into open slots."""
         tasks = sorted(self.get_pending_tasks(), key=lambda t: t.duration_minutes, reverse=True)
@@ -154,6 +188,25 @@ class Scheduler:
                 if a.conflicts(b):
                     return False
         return True
+
+    def detect_conflicts(self) -> List[str]:
+        """Return lightweight conflict warnings for overheard tasks, not exceptions."""
+        warnings: List[str] = []
+        scheduled_slots = [s for s in self.slots if s.task is not None]
+
+        for i, a in enumerate(scheduled_slots):
+            for b in scheduled_slots[i + 1:]:
+                if a.conflicts(b):
+                    pet_a = self.owner.get_pet(a.task.pet_id)
+                    pet_b = self.owner.get_pet(b.task.pet_id)
+                    pet_a_name = pet_a.name if pet_a else f"pet_id:{a.task.pet_id}"
+                    pet_b_name = pet_b.name if pet_b else f"pet_id:{b.task.pet_id}"
+                    warnings.append(
+                        f"Conflict: '{a.task.description}' ({pet_a_name}) and '{b.task.description}' ({pet_b_name}) overlap at {a.start_time.time()}"
+                    )
+
+        return warnings
+
 
     def get_schedule(self) -> List[ScheduleSlot]:
         """Return the current schedule data structure."""
