@@ -12,6 +12,7 @@ class Task:
     pet_id: int
     scheduled_time: Optional[datetime] = None
     duration_minutes: int = 30
+    priority: int = 1
     frequency: Optional[str] = None  # e.g., 'daily', 'weekly'
     status: str = "pending"  # 'pending', 'scheduled', 'completed'
 
@@ -20,9 +21,29 @@ class Task:
         self.scheduled_time = scheduled_time
         self.status = "scheduled"
 
-    def mark_completed(self) -> None:
-        """Mark the task status as completed."""
+    def mark_completed(self) -> Optional["Task"]:
+        """Mark the task status as completed and return next recurrence task if applicable."""
         self.status = "completed"
+
+        if self.frequency and self.scheduled_time:
+            if self.frequency.lower() == "daily":
+                next_time = self.scheduled_time + timedelta(days=1)
+            elif self.frequency.lower() == "weekly":
+                next_time = self.scheduled_time + timedelta(weeks=1)
+            else:
+                return None
+
+            return Task(
+                task_id=-1,
+                description=self.description,
+                pet_id=self.pet_id,
+                scheduled_time=next_time,
+                duration_minutes=self.duration_minutes,
+                frequency=self.frequency,
+                status="pending",
+            )
+
+        return None
 
     def is_overdue(self, now: Optional[datetime] = None) -> bool:
         """Check if the task is overdue relative to current time."""

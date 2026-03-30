@@ -51,3 +51,23 @@ PawPal+ now includes additional scheduler features:
 - Conflict detection: `Scheduler.detect_conflicts()` identifies overlapping slot assignments with friendly warning messages instead of crashes.
 - Daily/weekly recurrence (via `Task.frequency`) is now implemented as a future extension point in the task model.
 
+## Testing PawPal+
+
+Run:
+
+```bash
+python -m pytest
+```
+
+Tests cover:
+
+- Task completion state transitions (`pending` → `completed`).
+- Pet task management (`Pet.add_task`).
+- Sorting tasks by absolute `scheduled_time`, with unscheduled tasks at end.
+- Daily recurrence generation when completing a `daily` task.
+- Conflict detection when two schedule slots overlap.
+
+Confidence Level: ⭐⭐⭐⭐☆ (4/5)
+
+The suite has green tests for current core behaviors; additional edge cases can be added for weekly recurrence and multi-level constraints.
+
