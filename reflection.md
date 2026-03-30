@@ -31,13 +31,16 @@ Yes, the implementation evolved as I moved from the UML-like plan into Python co
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+- The scheduler considers time availability (daily time slots), priority, and task status. It builds a 30-minute slot grid from a work window then assigns pending tasks greedily.
+- Time is primary (tasks have scheduled_time or best fit), priority is secondary (shorter duration tasks can be sorted ahead), and preferences can be added later through task metadata.
+- I chose these because they are most user-visible and easy to test: owners care about no overlaps and getting urgent tasks done first.
 
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
+
+In the current implementation, conflict detection only checks for exact slot-time overlaps using discrete schedule slots, which is fast and easy to reason about. The tradeoff is that we do not detect partial overlaps (e.g., task A from 9:15-9:45 and task B from 9:30-10:00 in a 30-minute slot model), which simplifies the logic but may miss some real-world collisions. This is reasonable for the MVP because it keeps the scheduler lightweight and deterministic, with a clear next step to add interval arithmetic for finer-grained conflict checks.
 
 In the current implementation, conflict detection only checks for exact slot-time overlaps using discrete schedule slots, which is fast and easy to reason about. The tradeoff is that we do not detect partial overlaps (e.g., task A from 9:15-9:45 and task B from 9:30-10:00 in a 30-minute slot model), which simplifies the logic but may miss some real-world collisions. This is reasonable for the MVP because it keeps the scheduler lightweight and deterministic, with a clear next step to add interval arithmetic for finer-grained conflict checks.
 
@@ -47,13 +50,26 @@ In the current implementation, conflict detection only checks for exact slot-tim
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+- I used Copilot to brainstorm class designs, generate skeletons, and fill in the detailed implementation with Python dataclasses and schedule algorithms.
+- Useful prompts included asking for method names and responsibilities (e.g., `Task`, `Pet`, `Owner`, `Scheduler`), and then refining with `sort_tasks_by_time`, `filter_tasks`, `detect_conflicts`, and recurrence logic.
+- I also used the AI to translate requirements into concrete code paths for Streamlit state management (`st.session_state`) and for writing tests.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+- One moment I didn’t accept an AI suggestion as-is was when AI proposed nested loops for task conflict checking that could lead to O(n^2) behavior without early exits. I kept a more explicit slot-based conflict strategy with `ScheduleSlot.conflicts()` and a lightweight `detect_conflicts()` method.
+- I verified AI code suggestions by writing unit tests and running `pytest` after each change. When errors appeared (e.g., missing `priority` field), I adjusted the code accordingly and reran tests.
+
+**c. Chat session organization**
+
+- Splitting the work into separate chat sessions for planning, implementation, testing, and documentation helped keep each phase focused and reduced context switching.
+- I used the earlier phase to lock down architecture, later phases for coding, then dedicated QA phase for tests and bug fixes.
+- This approach kept the project coherent and made it easier to trace where each feature came from.
+
+**d. Lead architect takeaway**
+
+- Being the lead architect means deciding when an AI suggestion adds value vs. when it overcomplicates the design. I prioritized clarity and maintainability over clever but opaque code.
+- A good pattern was to use AI as a coding assistant, then enforce design rules via tests and incremental commits.
+- Outcome: a robust system with clear architecture, good coverage, and a professional UI pipeline.
 
 ---
 
